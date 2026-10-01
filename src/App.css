@@ -93,3 +93,461 @@ input[type="number"] {
   appearance: textfield;
   -moz-appearance: textfield;
 }
+input, select, textarea {
+  font-family: inherit;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #8f98a3 !important;
+  box-shadow: 0 0 0 2px rgba(143, 152, 163, 0.18);
+}
+
+input:disabled, select:disabled, textarea:disabled {
+  background: #f3f4f6;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.ghin-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d8c59a;
+  border-top-color: #b8891e;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  animation: ghinSpin 0.8s linear infinite;
+}
+
+@keyframes ghinSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  .no-print,
+  .app-shell-no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}
+
+button,
+a[role="button"] {
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+}
+
+button:not(:disabled):hover {
+  filter: brightness(0.98);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 760px) {
+  .score-grid-wrap,
+  .result-box {
+    padding: 8px;
+  }
+
+  .score-grid th,
+  .score-grid td {
+    padding: 4px;
+  }
+}
+
+/* GHIN-inspired scorecard entry grid */
+.scorecard-section {
+  padding: 0 !important;
+  overflow: hidden;
+  border-color: #d9e1e7 !important;
+}
+
+.scorecard-grid-wrap {
+  border: 1px solid #d6e0e7 !important;
+  border-radius: 0 !important;
+  background: #fff;
+}
+
+.scorecard-grid {
+  --scorecard-blue: #073f63;
+  --scorecard-blue-border: #2c607d;
+  --scorecard-grid-line: #dce3e8;
+  --scorecard-info-bg: #f3f5f7;
+  --scorecard-summary-bg: #dce8ef;
+  background: #fff;
+}
+
+.scorecard-grid th,
+.scorecard-grid td {
+  border-right: 1px solid var(--scorecard-grid-line);
+  border-bottom: 1px solid var(--scorecard-grid-line);
+}
+
+.scorecard-grid th:last-child,
+.scorecard-grid td:last-child {
+  border-right: 0;
+}
+
+.scorecard-grid .scorecard-hole-header th {
+  background: var(--scorecard-blue) !important;
+  color: #fff !important;
+  border-color: var(--scorecard-blue-border) !important;
+  font-size: 0.72rem;
+  font-weight: 800 !important;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.scorecard-grid .scorecard-info-header th {
+  background: var(--scorecard-info-bg) !important;
+  color: #174b6d !important;
+  border-color: var(--scorecard-grid-line) !important;
+  font-size: 0.72rem;
+  font-weight: 650 !important;
+}
+
+.scorecard-grid .scorecard-row-label {
+  text-align: left !important;
+  padding-left: 0.55rem !important;
+  letter-spacing: 0.04em;
+}
+
+.scorecard-grid tbody .scorecard-player-row:nth-child(even) > td:not(.scorecard-summary-cell) {
+  background: #f9fafb;
+}
+
+.scorecard-grid tbody .scorecard-player-row:nth-child(odd) > td:not(.scorecard-summary-cell) {
+  background: #fff;
+}
+
+.scorecard-grid .scorecard-player-cell {
+  background: inherit !important;
+  padding: 0.28rem 0.45rem !important;
+}
+
+.scorecard-grid .scorecard-meta-cell {
+  padding: 0.18rem 0.25rem;
+  text-align: center;
+  white-space: nowrap;
+  background: inherit;
+}
+
+.scorecard-grid .scorecard-score-cell {
+  position: relative;
+  min-width: 32px;
+  height: 36px;
+  padding: 0 !important;
+  text-align: center;
+  background: inherit;
+}
+
+.scorecard-grid .scorecard-score-cell:hover {
+  background: #f0f7fb !important;
+}
+
+.scorecard-grid .scorecard-score-cell:focus-within {
+  background: #e8f4fa !important;
+  box-shadow: inset 0 0 0 2px #1681b5;
+  z-index: 3;
+}
+
+.scorecard-grid .scorecard-score-input,
+.scorecard-grid .scorecard-score-input:hover,
+.scorecard-grid .scorecard-score-input:focus,
+.scorecard-grid .scorecard-score-input:active {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 30px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  text-align: center !important;
+  font-weight: 700;
+  cursor: text;
+  appearance: textfield;
+}
+
+.scorecard-grid .scorecard-score-input::-webkit-inner-spin-button,
+.scorecard-grid .scorecard-score-input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.scorecard-grid .scorecard-score-input:disabled {
+  color: #9ca3af !important;
+  background: #f1f3f5 !important;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.scorecard-grid .scorecard-score-input:disabled::placeholder {
+  color: #9ca3af;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.scorecard-grid .scorecard-summary-cell {
+  background: var(--scorecard-summary-bg) !important;
+  color: #0f3f5c;
+  font-weight: 800 !important;
+  border-color: #c9d8e2 !important;
+}
+
+.scorecard-grid .scorecard-post-cell {
+  background: #d5e4ed !important;
+}
+
+.scorecard-grid .scorecard-team-start > td {
+  border-top: 3px solid #8da5b5 !important;
+}
+
+.scorecard-grid .scorecard-row-withdrawn > td:not(.scorecard-summary-cell) {
+  background: #fff9ed !important;
+}
+
+.scorecard-grid .scorecard-tee-cell select {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+  font-weight: 600;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .scorecard-grid .scorecard-player-cell,
+  .scorecard-grid .scorecard-player-header,
+  .scorecard-grid .scorecard-row-label {
+    min-width: 190px !important;
+    width: 190px !important;
+    max-width: 190px !important;
+  }
+}
+
+/* Scorecard UI Refresh — iteration 2 */
+.scorecard-grid {
+  --scorecard-player-width: 230px;
+  --scorecard-team-width: 58px;
+  --scorecard-tee-width: 118px;
+  --scorecard-active: #0e79a8;
+  --scorecard-major-divider: #9eb5c3;
+  --scorecard-major-divider-width: 2px;
+}
+
+.scorecard-grid .scorecard-hole-header th,
+.scorecard-grid .scorecard-info-header th {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.scorecard-grid .scorecard-player-row > td {
+  height: 34px;
+}
+
+.scorecard-grid .scorecard-score-cell {
+  min-width: 32px;
+  width: 32px;
+  height: 34px;
+}
+
+.scorecard-grid .scorecard-score-cell:focus-within {
+  background: #dff1fa !important;
+  box-shadow: inset 0 0 0 2px var(--scorecard-active), 0 0 0 1px var(--scorecard-active);
+  z-index: 12;
+}
+
+.scorecard-grid .scorecard-score-cell:focus-within::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border: 1px solid rgba(14, 121, 168, 0.35);
+}
+
+.scorecard-grid .scorecard-player-identity {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  line-height: 1.05;
+}
+
+.scorecard-grid .scorecard-player-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 750;
+}
+
+.scorecard-grid .scorecard-player-status {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  color: #7b8794;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.scorecard-grid .scorecard-player-status--withdrawn {
+  color: #92400e;
+  font-weight: 800;
+}
+
+/* Quiet the reference columns so scores remain the visual focus. */
+.scorecard-grid tbody td:nth-child(n+2):nth-child(-n+6) {
+  color: #4b5966;
+  font-size: 0.73rem;
+  background-color: #f7f9fa !important;
+}
+
+.scorecard-grid tbody td:nth-child(5),
+.scorecard-grid tbody td:nth-child(6) {
+  color: #64717d;
+}
+
+/* Major scorecard section boundaries. Every divider uses one shared width
+   and color so none render darker or heavier than the others. */
+.scorecard-grid th:nth-child(7),
+.scorecard-grid td:nth-child(7),
+.scorecard-grid th:nth-child(16),
+.scorecard-grid td:nth-child(16),
+.scorecard-grid th:nth-child(26),
+.scorecard-grid td:nth-child(26),
+.scorecard-grid th:nth-child(27),
+.scorecard-grid td:nth-child(27) {
+  border-left: var(--scorecard-major-divider-width) solid var(--scorecard-major-divider) !important;
+}
+
+/* OUT separates the front and back nines, so use the same divider on its
+   right edge as every other major scorecard boundary. */
+.scorecard-grid th:nth-child(16),
+.scorecard-grid td:nth-child(16) {
+  border-right: var(--scorecard-major-divider-width) solid var(--scorecard-major-divider) !important;
+}
+
+.scorecard-grid .scorecard-summary-cell {
+  background: #d7e6ef !important;
+}
+
+.scorecard-grid .scorecard-total-cell,
+.scorecard-grid .scorecard-post-cell {
+  background: #ccdee9 !important;
+}
+
+.scorecard-grid .scorecard-team-start > td {
+  border-top: 3px solid #718fa2 !important;
+}
+
+/* Keep the identifying columns visible during horizontal score entry. */
+.scorecard-grid tr > :nth-child(1) {
+  position: sticky;
+  left: 0;
+  width: var(--scorecard-player-width);
+  min-width: var(--scorecard-player-width);
+  max-width: var(--scorecard-player-width);
+  z-index: 7;
+}
+
+.scorecard-grid tr > :nth-child(2) {
+  position: sticky;
+  left: var(--scorecard-player-width);
+  width: var(--scorecard-team-width);
+  min-width: var(--scorecard-team-width);
+  max-width: var(--scorecard-team-width);
+  z-index: 6;
+}
+
+.scorecard-grid tr > :nth-child(3) {
+  position: sticky;
+  left: calc(var(--scorecard-player-width) + var(--scorecard-team-width));
+  width: var(--scorecard-tee-width);
+  min-width: var(--scorecard-tee-width);
+  max-width: var(--scorecard-tee-width);
+  z-index: 5;
+  box-shadow: 2px 0 0 #c7d3db;
+}
+
+.scorecard-grid thead tr > :nth-child(-n+3) {
+  z-index: 40;
+}
+
+.scorecard-grid .scorecard-hole-header > :nth-child(-n+3) {
+  background: var(--scorecard-blue) !important;
+}
+
+.scorecard-grid .scorecard-info-header > :nth-child(-n+3) {
+  background: var(--scorecard-info-bg) !important;
+}
+
+.scorecard-grid tbody tr:nth-child(even) > :nth-child(1) {
+  background: #f9fafb !important;
+}
+
+.scorecard-grid tbody tr:nth-child(odd) > :nth-child(1) {
+  background: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .scorecard-grid {
+    --scorecard-player-width: 190px;
+    --scorecard-team-width: 54px;
+    --scorecard-tee-width: 108px;
+  }
+}
+
+/* Scorecard UI Refresh — iteration 3: consistent scorecard dividers */
+/* The navy header uses white separators. Major boundaries retain the same
+   width as the body grid, changing only their color for contrast. */
+.scorecard-grid .scorecard-hole-header th {
+  border-right-color: rgba(255, 255, 255, 0.55) !important;
+}
+
+.scorecard-grid .scorecard-hole-header th:nth-child(7),
+.scorecard-grid .scorecard-hole-header th:nth-child(16),
+.scorecard-grid .scorecard-hole-header th:nth-child(26),
+.scorecard-grid .scorecard-hole-header th:nth-child(27) {
+  border-left-color: #ffffff !important;
+}
+
+.scorecard-grid .scorecard-hole-header th:nth-child(16) {
+  border-right-color: #ffffff !important;
+}
+
+/* Scorecard UI Refresh — iteration 4: separate course data from player scores */
+/* The handicap row is the final course-information row, so give it a strong
+   bottom rule before the first player score row. */
+.scorecard-grid .scorecard-handicap-header > th,
+.scorecard-grid .scorecard-handicap-header > td {
+  border-bottom: 3px solid #718fa2 !important;
+}

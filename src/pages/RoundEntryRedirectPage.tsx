@@ -1,14 +1,27 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getRoundSetupStatus } from "../api/roundSetupApi";
+import { roundHasScrambleEvent, roundRequiresTeams } from "../utils/roundEventCapabilities";
 import {
   errorBoxStyle,
   pageContainerMediumStyle,
   sectionStyle,
 } from "../styles/uiStyles";
 
-function isTwoManFormat(format?: string | null): boolean {
-  return format === "TWO_MAN_LOW_NET";
+function hasScoringStarted(response: Awaited<ReturnType<typeof getRoundSetupStatus>>): boolean {
+  const players = response.round.players ?? [];
+
+  for (const player of players) {
+    if (
+      player.grossScore != null ||
+      player.adjustedGrossScore != null ||
+      player.netScore != null
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export default function RoundEntryRedirectPage() {
@@ -28,20 +41,27 @@ export default function RoundEntryRedirectPage() {
         const response = await getRoundSetupStatus(numericRoundId);
 
         if (response.round.finalized) {
-          navigate(`/rounds/${numericRoundId}/results`, { replace: true });
+          navigate(`/rounds/${numericRoundId}/scoring`, { replace: true });
           return;
         }
 
-        const twoMan = isTwoManFormat(response.round.format);
+        const usesTeamAssignment = roundRequiresTeams(response.readiness, response.round.format);
+        const scramble = roundHasScrambleEvent(response.readiness, response.round.format);
+        const scoringStarted = hasScoringStarted(response);
 
-        if (twoMan) {
+        if (usesTeamAssignment) {
           if (!response.readiness.teamsReady) {
             navigate(`/rounds/${numericRoundId}/teams`, { replace: true });
             return;
           }
 
+          if (scramble && !scoringStarted) {
+            navigate(`/rounds/${numericRoundId}/teams`, { replace: true });
+            return;
+          }
+
           if (!response.readiness.groupsReady) {
-            navigate(`/rounds/${numericRoundId}/groups`, { replace: true });
+            navigate(scramble ? `/rounds/${numericRoundId}/teams` : `/rounds/${numericRoundId}/groups`, { replace: true });
             return;
           }
 

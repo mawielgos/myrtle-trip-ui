@@ -1,17 +1,16 @@
-import axios from "axios";
+import api from "./api";
 import type {
   CourseDetail,
   CourseHole,
   CourseSummary,
   CourseTee,
+  CourseTeeComboHole,
   SaveCourseHoleRequest,
   SaveCourseRequest,
+  SaveCourseTeeComboHoleRequest,
   SaveCourseTeeRequest,
 } from "../types/courseAdmin";
 
-const api = axios.create({
-  baseURL: "/api",
-});
 
 export async function getAdminCourses(): Promise<CourseSummary[]> {
   const response = await api.get<CourseSummary[]>("/admin/courses");
@@ -93,6 +92,22 @@ export async function saveCourseTeeHoles(
 ): Promise<CourseHole[]> {
   const response = await api.put<CourseHole[]>(
     `/admin/courses/tees/${teeId}/holes`,
+    payload
+  );
+  return response.data;
+}
+
+export async function getCourseTeeComboHoles(teeId: number): Promise<CourseTeeComboHole[]> {
+  const response = await api.get<CourseTeeComboHole[]>(`/admin/courses/tees/${teeId}/combo-holes`);
+  return response.data;
+}
+
+export async function saveCourseTeeComboHoles(
+  teeId: number,
+  payload: SaveCourseTeeComboHoleRequest[]
+): Promise<CourseTeeComboHole[]> {
+  const response = await api.put<CourseTeeComboHole[]>(
+    `/admin/courses/tees/${teeId}/combo-holes`,
     payload
   );
   return response.data;

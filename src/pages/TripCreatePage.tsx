@@ -3,6 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getPlayers } from "../api/playerApi";
 import { getTrip, getTripPlayers, saveTripSetup } from "../api/tripApi";
 import type { PlayerListItem } from "../types/player";
+import { useUnsavedChangesWarning } from "../hooks/useUnsavedChangesWarning";
+import PageHeader from "../components/common/PageHeader";
+import TripDetailButton from "../components/common/TripDetailButton";
 import {
   buttonStyle,
   errorBoxStyle,
@@ -53,6 +56,28 @@ function sortPlayers(players: PlayerListItem[]): PlayerListItem[] {
   );
 }
 
+function normalizeTripHandicapMethod(value: string | null | undefined): string {
+  const normalized = (value ?? "").trim().toUpperCase();
+
+  if (normalized === "FROZEN_GHIN_INDEX") {
+    return "FROZEN_GHIN_INDEX";
+  }
+
+  if (normalized === "GHIN_HISTORY" || normalized === "GHIN") {
+    return "GHIN_HISTORY";
+  }
+
+  if (
+    normalized === "GHIN_PLUS_DB_SCORE_HISTORY" ||
+    normalized === "DB_SCORE_HISTORY" ||
+    normalized === "MYRTLE_BEACH"
+  ) {
+    return "GHIN_PLUS_DB_SCORE_HISTORY";
+  }
+
+  return "GHIN_PLUS_DB_SCORE_HISTORY";
+}
+
 export default function TripCreatePage() {
   const navigate = useNavigate();
   const { tripId } = useParams();
@@ -67,9 +92,17 @@ export default function TripCreatePage() {
   const [tripYear, setTripYear] = useState(String(currentYear()));
   const [tripCode, setTripCode] = useState("");
   const [entryFee, setEntryFee] = useState("");
+  const [tripStartDate, setTripStartDate] = useState("");
+  const [tripEndDate, setTripEndDate] = useState("");
+  const [plannedRoundCount, setPlannedRoundCount] = useState("1");
+  const [handicapsEnabled, setHandicapsEnabled] = useState(true);
+  const [handicapMethod, setHandicapMethod] = useState("GHIN_PLUS_DB_SCORE_HISTORY");
+  const [frozenIndexes, setFrozenIndexes] = useState<Record<number, string>>({});
+  const [scoreDataByPlayerId, setScoreDataByPlayerId] = useState<Record<number, { ghinHistoryCount: number; dbScoreHistoryCount: number; tripScoreCount: number; usableHandicapIndex: boolean }>>({});
   const [initialized, setInitialized] = useState(false);
   const [playerSearch, setPlayerSearch] = useState("");
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
+  const [initialSnapshot, setInitialSnapshot] = useState<string>("");
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -79,7 +112,7 @@ export default function TripCreatePage() {
   }, [tripId]);
 
   const filteredPlayers = useMemo(() => {
-    const sorted = sortPlayers(players);
+    const sorted = sortPlayers(players.filter((player) => player.active === true));
     const search = playerSearch.trim().toLowerCase();
 
     if (!search) {
@@ -91,8 +124,41 @@ export default function TripCreatePage() {
     );
   }, [players, playerSearch]);
 
+
+  const comparableSnapshot = useMemo(() => {
+    return JSON.stringify({
+      tripName: tripName.trim(),
+      tripYear: tripYear.trim(),
+      tripCode: tripCode.trim(),
+      entryFee: entryFee.trim(),
+      tripStartDate,
+      tripEndDate,
+      plannedRoundCount: plannedRoundCount.trim(),
+      handicapsEnabled,
+      handicapMethod,
+      frozenIndexes,
+      selectedPlayerIds: [...selectedPlayerIds].sort((a, b) => a - b),
+    });
+  }, [entryFee, frozenIndexes, handicapsEnabled, handicapMethod, plannedRoundCount, selectedPlayerIds, tripCode, tripEndDate, tripName, tripStartDate, tripYear]);
+
+  const usesFrozenGhinIndex = handicapsEnabled && handicapMethod === "FROZEN_GHIN_INDEX";
+
+  const hasChanges =
+    !loading &&
+    initialSnapshot.length > 0 &&
+    comparableSnapshot !== initialSnapshot;
+
+  const confirmIfNeeded = useUnsavedChangesWarning(hasChanges && !saving);
+
+  async function navigateIfConfirmed(path: string): Promise<void> {
+    if (!(await confirmIfNeeded())) {
+      return;
+    }
+    navigate(path);
+  }
+
   const activePlayers = useMemo(
-    () => players.filter((player) => player.active),
+    () => players.filter((player) => player.active === true),
     [players]
   );
 
@@ -112,6 +178,11 @@ export default function TripCreatePage() {
         ]);
 
         setPlayers(playerData);
+        const activePlayerIds = new Set(
+          playerData
+            .filter((player) => player.active === true)
+            .map((player) => player.playerId)
+        );
         setTripName(tripData.tripName ?? "");
         setTripYear(tripData.tripYear != null ? String(tripData.tripYear) : "");
         setTripCode(tripData.tripCode ?? "");
@@ -120,12 +191,76 @@ export default function TripCreatePage() {
             ? ""
             : String(tripData.entryFee)
         );
+        setTripStartDate(tripData.tripStartDate ?? "");
+        setTripEndDate(tripData.tripEndDate ?? "");
+        setPlannedRoundCount(String(tripData.plannedRoundCount ?? 1));
+        setHandicapsEnabled(tripData.handicapsEnabled !== false);
+        setHandicapMethod(normalizeTripHandicapMethod(tripData.handicapMethod));
         setInitialized(Boolean(tripData.initialized));
-        setSelectedPlayerIds(tripPlayerData.map((player) => player.playerId));
+        const loadedPlayerIds = tripPlayerData
+          .filter((player) => activePlayerIds.has(player.playerId))
+          .map((player) => player.playerId);
+        const loadedFrozenIndexes: Record<number, string> = {};
+        tripPlayerData
+          .filter((player) => activePlayerIds.has(player.playerId))
+          .forEach((player) => {
+            loadedFrozenIndexes[player.playerId] =
+              player.frozenHandicapIndex == null ? "" : String(player.frozenHandicapIndex);
+          });
+        const loadedScoreData: Record<number, { ghinHistoryCount: number; dbScoreHistoryCount: number; tripScoreCount: number; usableHandicapIndex: boolean }> = {};
+        tripPlayerData
+          .filter((player) => activePlayerIds.has(player.playerId))
+          .forEach((player) => {
+            loadedScoreData[player.playerId] = {
+              ghinHistoryCount: player.ghinHistoryCount ?? 0,
+              dbScoreHistoryCount: player.dbScoreHistoryCount ?? 0,
+              tripScoreCount: player.tripScoreCount ?? 0,
+              usableHandicapIndex: player.usableHandicapIndex === true,
+            };
+          });
+        setFrozenIndexes(loadedFrozenIndexes);
+        setScoreDataByPlayerId(loadedScoreData);
+        setSelectedPlayerIds(loadedPlayerIds);
+        setInitialSnapshot(JSON.stringify({
+          tripName: tripData.tripName ?? "",
+          tripYear: tripData.tripYear != null ? String(tripData.tripYear) : "",
+          tripCode: tripData.tripCode ?? "",
+          entryFee:
+            tripData.entryFee == null || Number.isNaN(tripData.entryFee)
+              ? ""
+              : String(tripData.entryFee),
+          tripStartDate: tripData.tripStartDate ?? "",
+          tripEndDate: tripData.tripEndDate ?? "",
+          plannedRoundCount: String(tripData.plannedRoundCount ?? 1),
+          handicapsEnabled: tripData.handicapsEnabled !== false,
+          handicapMethod: normalizeTripHandicapMethod(tripData.handicapMethod),
+          frozenIndexes: loadedFrozenIndexes,
+          selectedPlayerIds: [...loadedPlayerIds].sort((a, b) => a - b),
+        }));
       } else {
         const playerData = await playerPromise;
         setPlayers(playerData);
+        setHandicapsEnabled(true);
+        setHandicapMethod("GHIN_PLUS_DB_SCORE_HISTORY");
+        setTripStartDate("");
+        setTripEndDate("");
+        setPlannedRoundCount("1");
+        setFrozenIndexes({});
+        setScoreDataByPlayerId({});
         setInitialized(false);
+        setInitialSnapshot(JSON.stringify({
+          tripName: "",
+          tripYear: String(currentYear()),
+          tripCode: "",
+          entryFee: "",
+          tripStartDate: "",
+          tripEndDate: "",
+          plannedRoundCount: "1",
+          handicapsEnabled: true,
+          handicapMethod: "GHIN_PLUS_DB_SCORE_HISTORY",
+          frozenIndexes: {},
+          selectedPlayerIds: [],
+        }));
       }
     } catch (err: any) {
       const apiMessage =
@@ -136,7 +271,7 @@ export default function TripCreatePage() {
       setError(
         typeof apiMessage === "string"
           ? apiMessage
-          : "Failed to load trip setup."
+          : "Failed to load event setup."
       );
     } finally {
       setLoading(false);
@@ -145,11 +280,11 @@ export default function TripCreatePage() {
 
   function handleBack(): void {
     if (isEditMode && numericTripId != null) {
-      navigate(`/trips/${numericTripId}`);
+      navigateIfConfirmed(`/trips/${numericTripId}`);
       return;
     }
 
-    navigate("/trips");
+    navigateIfConfirmed("/trips");
   }
 
   function togglePlayer(playerId: number): void {
@@ -158,6 +293,10 @@ export default function TripCreatePage() {
         return current.filter((id) => id !== playerId);
       }
 
+      setFrozenIndexes((existing) => ({
+        ...existing,
+        [playerId]: existing[playerId] ?? "",
+      }));
       return [...current, playerId];
     });
   }
@@ -167,7 +306,7 @@ export default function TripCreatePage() {
   }
 
   function handleSelectAllActive(): void {
-    setSelectedPlayerIds(activePlayers.map((player) => player.id));
+    setSelectedPlayerIds(activePlayers.map((player) => player.playerId));
   }
 
   function handleClearPlayers(): void {
@@ -176,20 +315,20 @@ export default function TripCreatePage() {
 
   function validate(): string | null {
     if (!tripName.trim()) {
-      return "Trip name is required.";
+      return "Event name is required.";
     }
 
     if (!tripYear.trim()) {
-      return "Trip year is required.";
+      return "Event year is required.";
     }
 
     const numericYear = Number(tripYear);
     if (!Number.isInteger(numericYear)) {
-      return "Trip year must be a whole number.";
+      return "Event year must be a whole number.";
     }
 
     if (!tripCode.trim()) {
-      return "Trip code is required.";
+      return "Event code is required.";
     }
 
     if (entryFee.trim()) {
@@ -199,8 +338,35 @@ export default function TripCreatePage() {
       }
     }
 
-    if (selectedPlayerIds.length === 0) {
-      return "Select at least one player.";
+    if (!tripStartDate) {
+      return "Event start date is required.";
+    }
+
+    if (!tripEndDate) {
+      return "Event end date is required.";
+    }
+
+    if (tripEndDate < tripStartDate) {
+      return "Event end date cannot be before event start date.";
+    }
+
+    const numericPlannedRoundCount = Number(plannedRoundCount);
+    if (!Number.isInteger(numericPlannedRoundCount) || numericPlannedRoundCount < 1 || numericPlannedRoundCount > 12) {
+      return "Number of rounds must be a whole number between 1 and 12.";
+    }
+
+    if (handicapsEnabled && handicapMethod === "FROZEN_GHIN_INDEX") {
+      for (const playerId of selectedPlayerIds) {
+        const rawIndex = frozenIndexes[playerId]?.trim() ?? "";
+        if (!rawIndex) {
+          return "Frozen GHIN Index is required for every selected player.";
+        }
+
+        const numericIndex = Number(rawIndex);
+        if (!Number.isFinite(numericIndex) || numericIndex < -10 || numericIndex > 54) {
+          return "Frozen GHIN Index must be a number between -10.0 and 54.0.";
+        }
+      }
     }
 
     return null;
@@ -225,17 +391,32 @@ export default function TripCreatePage() {
         tripYear: Number(tripYear),
         tripCode: tripCode.trim(),
         entryFee: entryFee.trim() ? Number(entryFee) : null,
+        tripStartDate,
+        tripEndDate,
+        plannedRoundCount: Number(plannedRoundCount),
+        handicapsEnabled,
+        handicapMethod,
         playerIds: selectedPlayerIds,
+        frozenHandicapIndexesByPlayerId: Object.fromEntries(
+          selectedPlayerIds.map((playerId) => [
+            playerId,
+            frozenIndexes[playerId]?.trim()
+              ? Number(frozenIndexes[playerId])
+              : null,
+          ])
+        ),
       });
 
-      setMessage(isEditMode ? "Trip updated." : "Trip saved.");
+      setMessage(isEditMode ? "Event updated." : "Event saved.");
 
       if (isEditMode) {
+        setInitialSnapshot(comparableSnapshot);
         navigate(`/trips/${savedTripId}`);
         return;
       }
 
-      navigate(`/trips/${savedTripId}/planned-rounds`);
+      setInitialSnapshot(comparableSnapshot);
+      navigate(`/trips/${savedTripId}`);
     } catch (err: any) {
       const apiMessage =
         err?.response?.data?.message ||
@@ -243,7 +424,7 @@ export default function TripCreatePage() {
         err?.response?.data;
 
       setError(
-        typeof apiMessage === "string" ? apiMessage : "Failed to save trip."
+        typeof apiMessage === "string" ? apiMessage : "Failed to save event."
       );
       setMessage(null);
     } finally {
@@ -253,21 +434,36 @@ export default function TripCreatePage() {
 
   return (
     <div style={pageContainerMediumStyle}>
-      <div style={{ marginBottom: "16px" }}>
-        <button style={buttonStyle} onClick={handleBack} type="button">
-          {isEditMode ? "Back to Trip" : "Back to Trips"}
-        </button>
-      </div>
-
-      <h1 style={{ marginTop: 0 }}>{isEditMode ? "Edit Trip" : "Create Trip"}</h1>
+      <PageHeader
+        title={isEditMode ? "Edit Event" : "Create Event"}
+        actions={
+          <>
+            {isEditMode && numericTripId != null ? (
+              <TripDetailButton tripId={numericTripId} onBeforeNavigate={confirmIfNeeded} />
+            ) : (
+              <button style={buttonStyle} onClick={handleBack} type="button">
+                Events
+              </button>
+            )}
+            <button
+              style={primaryButtonStyle}
+              type="button"
+              onClick={handleSave}
+              disabled={saving || initialized}
+            >
+              {saving ? "Saving..." : isEditMode ? "Save Event Changes" : "Save Event"}
+            </button>
+          </>
+        }
+      />
 
       {error ? <div style={errorBoxStyle}>{error}</div> : null}
       {message ? <div style={successBoxStyle}>{message}</div> : null}
 
       <div style={warningBoxStyle}>
         {initialized
-          ? "This trip is already initialized, so roster changes should be blocked."
-          : "Save the trip first, then set the 5 planned rounds, then initialize the trip."}
+          ? "This event is already initialized, so roster changes should be blocked."
+          : "Create the event shell first. You can add or import players afterward from Event Detail before starting the event."}
       </div>
 
       <div style={sectionStyle}>
@@ -280,7 +476,7 @@ export default function TripCreatePage() {
           }}
         >
           <label style={labelStyle} htmlFor="tripName">
-            Trip Name
+            Event Name
             <input
               id="tripName"
               type="text"
@@ -292,7 +488,7 @@ export default function TripCreatePage() {
           </label>
 
           <label style={labelStyle} htmlFor="tripYear">
-            Trip Year
+            Event Year
             <input
               id="tripYear"
               type="number"
@@ -304,7 +500,7 @@ export default function TripCreatePage() {
           </label>
 
           <label style={labelStyle} htmlFor="tripCode">
-            Trip Code
+            Event Code
             <input
               id="tripCode"
               type="text"
@@ -326,6 +522,117 @@ export default function TripCreatePage() {
               disabled={saving || initialized}
             />
           </label>
+
+          <label style={labelStyle} htmlFor="tripStartDate">
+            Event Start Date
+            <input
+              id="tripStartDate"
+              type="date"
+              value={tripStartDate}
+              onChange={(e) => setTripStartDate(e.target.value)}
+              style={formInputStyle}
+              disabled={saving || initialized}
+            />
+          </label>
+
+          <label style={labelStyle} htmlFor="tripEndDate">
+            Event End Date
+            <input
+              id="tripEndDate"
+              type="date"
+              value={tripEndDate}
+              onChange={(e) => setTripEndDate(e.target.value)}
+              style={formInputStyle}
+              disabled={saving || initialized}
+            />
+          </label>
+
+          <label style={labelStyle} htmlFor="plannedRoundCount">
+            Number of Rounds
+            <input
+              id="plannedRoundCount"
+              type="number"
+              min={1}
+              max={12}
+              step={1}
+              value={plannedRoundCount}
+              onChange={(e) => {
+                if (/^\d*$/.test(e.target.value)) {
+                  setPlannedRoundCount(e.target.value);
+                }
+              }}
+              onBlur={() => {
+                const parsed = Number(plannedRoundCount);
+                if (!Number.isInteger(parsed) || parsed < 1) {
+                  setPlannedRoundCount("1");
+                } else if (parsed > 12) {
+                  setPlannedRoundCount("12");
+                }
+              }}
+              style={formInputStyle}
+              disabled={saving || initialized}
+            />
+          </label>
+
+          <label
+            style={{
+              ...labelStyle,
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: "8px",
+              paddingBottom: "9px",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!handicapsEnabled}
+              onChange={(e) => setHandicapsEnabled(!e.target.checked)}
+              disabled={saving || initialized}
+            />
+            Scratch / no handicaps
+          </label>
+
+          <label style={labelStyle} htmlFor="handicapMethod">
+            Event Handicap Method
+            <select
+              id="handicapMethod"
+              value={handicapMethod}
+              onChange={(e) => setHandicapMethod(e.target.value)}
+              style={formInputStyle}
+              disabled={saving || initialized || !handicapsEnabled}
+            >
+              <option value="FROZEN_GHIN_INDEX">Frozen GHIN</option>
+              <option value="GHIN_HISTORY">GHIN History</option>
+              <option value="GHIN_PLUS_DB_SCORE_HISTORY">GHIN History + DB Score History</option>
+            </select>
+          </label>
+        </div>
+
+        <div
+          style={{
+            marginTop: "12px",
+            padding: "10px 12px",
+            border: "1px solid #d8e2ef",
+            borderRadius: "8px",
+            background: "#f7fbff",
+            color: "#36506c",
+            fontSize: "13px",
+            lineHeight: 1.4,
+          }}
+        >
+          Event dates are used to validate planned round dates. Number of rounds controls the round rows created on the Round Planning page. Players are optional during initial creation and can be added or imported after the event is saved.
+          {" "}
+          {handicapsEnabled
+            ? "This handicap method applies to the entire event. Mixed event policies are not allowed."
+            : "Scratch / no handicaps is selected. Everyone will be treated as scratch for event start readiness and scorecard handicap setup."}
+          {handicapsEnabled && usesFrozenGhinIndex
+            ? " Enter one frozen starting index for each selected player below."
+            : handicapsEnabled && handicapMethod === "GHIN_HISTORY"
+            ? " Only loaded GHIN history and event scores will be used for every selected player."
+            : handicapsEnabled
+            ? " Loaded GHIN history, DB score history, and event scores will be used for every selected player."
+            : ""}
         </div>
 
         <div
@@ -342,7 +649,7 @@ export default function TripCreatePage() {
             onClick={handleAutoCode}
             disabled={saving || initialized}
           >
-            Build Trip Code
+            Build Event Code
           </button>
         </div>
       </div>
@@ -358,7 +665,12 @@ export default function TripCreatePage() {
             marginBottom: "12px",
           }}
         >
-          <h2 style={{ margin: 0 }}>Players</h2>
+          <div>
+            <h2 style={{ margin: 0 }}>Players</h2>
+            <div style={{ marginTop: "4px", color: "#64748b", fontSize: "13px" }}>
+              Optional during creation. Add players here manually or save first and import players from Event Detail.
+            </div>
+          </div>
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button
@@ -406,24 +718,71 @@ export default function TripCreatePage() {
               <tr>
                 <th style={thStyle}>Select</th>
                 <th style={thStyle}>Player</th>
-                <th style={thStyle}>Active</th>
-                <th style={thStyle}>Method</th>
+                <th style={thStyle}>Score Data</th>
+                <th style={thStyle}>Index?</th>
+                {usesFrozenGhinIndex ? <th style={thStyle}>Frozen GHIN Index</th> : null}
               </tr>
             </thead>
             <tbody>
               {filteredPlayers.map((player) => (
-                <tr key={player.id}>
+                <tr key={player.playerId}>
                   <td style={tdStyle}>
                     <input
                       type="checkbox"
-                      checked={selectedPlayerIds.includes(player.id)}
-                      onChange={() => togglePlayer(player.id)}
+                      checked={selectedPlayerIds.includes(player.playerId)}
+                      onChange={() => togglePlayer(player.playerId)}
                       disabled={saving || initialized}
                     />
                   </td>
-                  <td style={tdStyle}>{player.displayName}</td>
-                  <td style={tdStyle}>{player.active ? "Yes" : "No"}</td>
-                  <td style={tdStyle}>{player.handicapMethod ?? ""}</td>
+                  <td style={tdStyle}>
+                    {player.displayName}
+                    {player.ghinNumber ? (
+                      <span style={{ color: "#64748b", marginLeft: "6px" }}>({player.ghinNumber})</span>
+                    ) : null}
+                  </td>
+                  <td style={tdStyle}>
+                    {selectedPlayerIds.includes(player.playerId) ? (
+                      <span style={{ fontSize: "12px", color: "#475569" }}>
+                        GHIN {scoreDataByPlayerId[player.playerId]?.ghinHistoryCount ?? 0} · DB {scoreDataByPlayerId[player.playerId]?.dbScoreHistoryCount ?? 0} · Event {scoreDataByPlayerId[player.playerId]?.tripScoreCount ?? 0}
+                      </span>
+                    ) : (
+                      <span style={{ color: "#94a3b8" }}>—</span>
+                    )}
+                  </td>
+                  <td style={tdStyle}>
+                    {!handicapsEnabled ? (
+                      <span style={{ color: "#64748b" }}>Scratch</span>
+                    ) : usesFrozenGhinIndex ? (
+                      frozenIndexes[player.playerId]?.trim() ? "Yes" : "No"
+                    ) : scoreDataByPlayerId[player.playerId]?.usableHandicapIndex ? (
+                      "Yes"
+                    ) : selectedPlayerIds.includes(player.playerId) ? (
+                      <span style={{ color: "#b45309" }}>No</span>
+                    ) : (
+                      <span style={{ color: "#94a3b8" }}>—</span>
+                    )}
+                  </td>
+                  {usesFrozenGhinIndex ? (
+                    <td style={tdStyle}>
+                      {selectedPlayerIds.includes(player.playerId) ? (
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={frozenIndexes[player.playerId] ?? ""}
+                          onChange={(e) =>
+                            setFrozenIndexes((current) => ({
+                              ...current,
+                              [player.playerId]: e.target.value,
+                            }))
+                          }
+                          style={{ ...formInputStyle, maxWidth: "100px" }}
+                          disabled={saving || initialized}
+                        />
+                      ) : (
+                        ""
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -441,8 +800,8 @@ export default function TripCreatePage() {
           {saving
             ? "Saving..."
             : isEditMode
-            ? "Save Trip Changes"
-            : "Save Trip and Continue"}
+            ? "Save Event Changes"
+            : "Save Event and Continue"}
         </button>
         <button style={buttonStyle} type="button" onClick={handleBack} disabled={saving}>
           Cancel

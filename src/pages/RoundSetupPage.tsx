@@ -18,6 +18,9 @@ import {
   sectionStyle,
   warningBoxStyle,
 } from "../styles/uiStyles";
+import { useUnsavedChangesWarning } from "../hooks/useUnsavedChangesWarning";
+import PageHeader from "../components/common/PageHeader";
+import TripDetailButton from "../components/common/TripDetailButton";
 
 type Option = {
   id: number;
@@ -29,7 +32,8 @@ const formatOptions: Array<{ value: RoundFormat; label: string }> = [
   { value: "ONE_TWO_THREE", label: "4-Man 1-2-3" },
   { value: "TWO_MAN_LOW_NET", label: "2-Man Low Net" },
   { value: "THREE_LOW_NET", label: "4-Man 3 Low Net" },
-  { value: "TEAM_SCRAMBLE", label: "4-Man Scramble" },
+  { value: "TEAM_SCRAMBLE", label: "Scramble" },
+  { value: "STROKE_PLAY", label: "Stroke Play" },
 ];
 
 function toTripOptions(trips: TripListItem[]): Option[] {
@@ -37,6 +41,14 @@ function toTripOptions(trips: TripListItem[]): Option[] {
     id: trip.tripId,
     label: `${trip.tripName} (${trip.tripYear})`,
   }));
+}
+
+function formatCourseRating(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return "—";
+  }
+
+  return Number(value).toFixed(1);
 }
 
 function toCourseOptions(courses: CourseListItem[]): Option[] {
@@ -53,7 +65,7 @@ function toTeeOptions(tees: CourseTeeListItem[]): Option[] {
     id: tee.courseTeeId,
     label:
       tee.courseRating != null && tee.slope != null
-        ? `${tee.teeName} (Rating ${tee.courseRating} / Slope ${tee.slope})`
+        ? `${tee.teeName} ${tee.yardageTotal ? `- ${tee.yardageTotal} yds ` : ""}(Rating ${formatCourseRating(tee.courseRating)} / Slope ${tee.slope}) ${tee.effectiveDate ? `eff. ${tee.effectiveDate}` : ""}`
         : tee.teeName,
   }));
 }
@@ -77,14 +89,11 @@ export default function RoundSetupPage() {
 
   const [selectedTripId, setSelectedTripId] = useState(routeTripId ?? "");
   const [selectedCourseId, setSelectedCourseId] = useState("");
-  const [selectedStandardCourseTeeId, setSelectedStandardCourseTeeId] =
-    useState("");
-  const [selectedAlternateCourseTeeId, setSelectedAlternateCourseTeeId] =
-    useState("");
-
+  const [selectedDefaultCourseTeeId, setSelectedDefaultCourseTeeId] = useState("");
   const [roundDate, setRoundDate] = useState(todayIsoDate());
   const [format, setFormat] = useState<RoundFormat>("MIDDLE_MAN");
   const [handicapPercent, setHandicapPercent] = useState("100");
+  const [initialSnapshot, setInitialSnapshot] = useState<string>("");
 
   const tripOptions = useMemo(() => toTripOptions(trips), [trips]);
   const courseOptions = useMemo(() => toCourseOptions(courses), [courses]);
@@ -105,13 +114,42 @@ export default function RoundSetupPage() {
   useEffect(() => {
     if (!selectedCourseId) {
       setTees([]);
-      setSelectedStandardCourseTeeId("");
-      setSelectedAlternateCourseTeeId("");
+      setSelectedDefaultCourseTeeId("");
       return;
     }
 
     void loadTees(Number(selectedCourseId));
   }, [selectedCourseId]);
+
+  const comparableSnapshot = useMemo(() => {
+    return JSON.stringify({
+      selectedTripId,
+      selectedCourseId,
+      selectedDefaultCourseTeeId,
+      roundDate,
+      format,
+      handicapPercent,
+    });
+  }, [
+    format,
+    handicapPercent,
+    roundDate,
+    selectedCourseId,
+    selectedDefaultCourseTeeId,
+    selectedTripId,
+  ]);
+
+  const hasChanges =
+    !loadingLookups &&
+    initialSnapshot.length > 0 &&
+    comparableSnapshot !== initialSnapshot;
+
+  const confirmIfNeeded = useUnsavedChangesWarning(hasChanges && !saving);
+
+  async function navigateIfConfirmed(path: string): Promise<void> {
+    if (!(await confirmIfNeeded())) return;
+    navigate(path);
+  }
 
   const normalizedHandicapPercent = useMemo(() => {
     const value = Number(handicapPercent);
@@ -127,18 +165,27 @@ export default function RoundSetupPage() {
       setTrips(tripData);
       setCourses(courseData);
 
-      if (
-        routeTripId &&
-        tripData.some((trip) => trip.tripId === Number(routeTripId))
-      ) {
+      let initialTripId = "";
+      if (routeTripId && tripData.some((trip) => trip.tripId === Number(routeTripId))) {
+        initialTripId = routeTripId;
         setSelectedTripId(routeTripId);
       } else if (!routeTripId && tripData.length === 1) {
+        initialTripId = String(tripData[0].tripId);
         setSelectedTripId(String(tripData[0].tripId));
       }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load round setup data."
+
+      setInitialSnapshot(
+        JSON.stringify({
+          selectedTripId: initialTripId,
+          selectedCourseId: "",
+          selectedDefaultCourseTeeId: "",
+          roundDate: todayIsoDate(),
+          format: "MIDDLE_MAN",
+          handicapPercent: "100",
+        }),
       );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load round setup data.");
     } finally {
       setLoadingLookups(false);
     }
@@ -151,18 +198,12 @@ export default function RoundSetupPage() {
 
       const teeData = await getCourseTees(courseId);
       setTees(teeData);
-
-      if (teeData.length === 1) {
-        setSelectedStandardCourseTeeId(String(teeData[0].courseTeeId));
-      } else {
-        setSelectedStandardCourseTeeId("");
-      }
-
-      setSelectedAlternateCourseTeeId("");
+      setSelectedDefaultCourseTeeId(
+        teeData.length === 1 ? String(teeData[0].courseTeeId) : "",
+      );
     } catch (err) {
       setTees([]);
-      setSelectedStandardCourseTeeId("");
-      setSelectedAlternateCourseTeeId("");
+      setSelectedDefaultCourseTeeId("");
       setError(err instanceof Error ? err.message : "Failed to load course tees.");
     } finally {
       setLoadingTees(false);
@@ -170,9 +211,9 @@ export default function RoundSetupPage() {
   }
 
   function validate(): string | null {
-    if (!selectedTripId) return "Trip is required.";
+    if (!selectedTripId) return "Event is required.";
     if (!selectedCourseId) return "Course is required.";
-    if (!selectedStandardCourseTeeId) return "Standard tee is required.";
+    if (!selectedDefaultCourseTeeId) return "Default tee is required.";
     if (!roundDate) return "Round date is required.";
     if (!format) return "Format is required.";
     if (!Number.isInteger(normalizedHandicapPercent)) {
@@ -180,12 +221,6 @@ export default function RoundSetupPage() {
     }
     if (normalizedHandicapPercent < 0 || normalizedHandicapPercent > 100) {
       return "Handicap percent must be between 0 and 100.";
-    }
-    if (
-      selectedAlternateCourseTeeId &&
-      selectedAlternateCourseTeeId === selectedStandardCourseTeeId
-    ) {
-      return "Alternate tee must be different from the standard tee.";
     }
     return null;
   }
@@ -204,16 +239,14 @@ export default function RoundSetupPage() {
       const payload: RoundSetupRequest = {
         tripId: Number(selectedTripId),
         courseId: Number(selectedCourseId),
-        standardCourseTeeId: Number(selectedStandardCourseTeeId),
-        alternateCourseTeeId: selectedAlternateCourseTeeId
-          ? Number(selectedAlternateCourseTeeId)
-          : null,
+        defaultCourseTeeId: Number(selectedDefaultCourseTeeId),
         roundDate,
         format,
         handicapPercent: normalizedHandicapPercent,
       };
 
       const roundId = await startRound(payload);
+      setInitialSnapshot(comparableSnapshot);
       navigate(`/rounds/${roundId}/open`);
     } catch (err: any) {
       const apiMessage =
@@ -221,11 +254,7 @@ export default function RoundSetupPage() {
         err?.response?.data?.error ||
         err?.response?.data;
 
-      setError(
-        typeof apiMessage === "string"
-          ? apiMessage
-          : "Failed to start round."
-      );
+      setError(typeof apiMessage === "string" ? apiMessage : "Failed to start round.");
     } finally {
       setSaving(false);
     }
@@ -233,27 +262,24 @@ export default function RoundSetupPage() {
 
   function handleCancel(): void {
     if (selectedTripId) {
-      navigate(`/trips/${selectedTripId}`);
+      navigateIfConfirmed(`/trips/${selectedTripId}`);
       return;
     }
-    navigate("/trips");
+    navigateIfConfirmed("/trips");
   }
 
   return (
     <div style={pageContainerMediumStyle}>
-      <div style={{ marginBottom: "16px" }}>
-        <button style={buttonStyle} type="button" onClick={handleCancel}>
-          Back to Trip
-        </button>
-      </div>
-
-      <h1 style={{ marginTop: 0 }}>Start Round</h1>
+      <PageHeader
+        title="Start Round"
+        subtitle="Select the event, course, default tee, date, format, and handicap percent. Player-specific tee changes happen on the team/group setup page."
+        actions={<TripDetailButton tripId={selectedTripId || undefined} onBeforeNavigate={confirmIfNeeded} />}
+      />
 
       {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
       <div style={warningBoxStyle}>
-        Select the trip, course, standard tee, optional alternate tee, date, and
-        format.
+        Select the default tee for the round. Individual player tee overrides are handled later on the team/group assignment page.
       </div>
 
       <div style={sectionStyle}>
@@ -263,7 +289,7 @@ export default function RoundSetupPage() {
           <>
             <div style={gridStyle}>
               <label style={labelStyle} htmlFor="tripId">
-                Trip
+                Event
                 <select
                   id="tripId"
                   value={selectedTripId}
@@ -271,11 +297,9 @@ export default function RoundSetupPage() {
                   style={formSelectStyle}
                   disabled={saving}
                 >
-                  <option value="">Select a trip</option>
+                  <option value="">Select an event</option>
                   {tripOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
+                    <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
                 </select>
               </label>
@@ -291,47 +315,25 @@ export default function RoundSetupPage() {
                 >
                   <option value="">Select a course</option>
                   {courseOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
+                    <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
                 </select>
               </label>
 
-              <label style={labelStyle} htmlFor="standardCourseTeeId">
-                Standard Tee
+              <label style={labelStyle} htmlFor="defaultCourseTeeId">
+                Default Tee
                 <select
-                  id="standardCourseTeeId"
-                  value={selectedStandardCourseTeeId}
-                  onChange={(e) => setSelectedStandardCourseTeeId(e.target.value)}
+                  id="defaultCourseTeeId"
+                  value={selectedDefaultCourseTeeId}
+                  onChange={(e) => setSelectedDefaultCourseTeeId(e.target.value)}
                   style={formSelectStyle}
                   disabled={saving || loadingTees || !selectedCourseId}
                 >
                   <option value="">
-                    {loadingTees ? "Loading tees..." : "Select a standard tee"}
+                    {loadingTees ? "Loading tees..." : "Select a default tee"}
                   </option>
                   {teeOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={labelStyle} htmlFor="alternateCourseTeeId">
-                Alternate Tee
-                <select
-                  id="alternateCourseTeeId"
-                  value={selectedAlternateCourseTeeId}
-                  onChange={(e) => setSelectedAlternateCourseTeeId(e.target.value)}
-                  style={formSelectStyle}
-                  disabled={saving || loadingTees || !selectedCourseId}
-                >
-                  <option value="">None</option>
-                  {teeOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
+                    <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
                 </select>
               </label>
@@ -358,9 +360,7 @@ export default function RoundSetupPage() {
                   disabled={saving}
                 >
                   {formatOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
+                    <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </label>
@@ -381,28 +381,9 @@ export default function RoundSetupPage() {
               </label>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginTop: "16px",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                style={buttonStyle}
-                type="button"
-                onClick={handleCancel}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                style={primaryButtonStyle}
-                type="button"
-                onClick={() => void handleSubmit()}
-                disabled={saving}
-              >
+            <div style={{ display: "flex", gap: "8px", marginTop: "16px", flexWrap: "wrap" }}>
+              <button style={buttonStyle} type="button" onClick={handleCancel} disabled={saving}>Cancel</button>
+              <button style={primaryButtonStyle} type="button" onClick={() => void handleSubmit()} disabled={saving}>
                 {saving ? "Starting Round..." : "Start Round"}
               </button>
             </div>

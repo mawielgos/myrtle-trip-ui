@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getRoundSetupStatus } from "../../api/roundSetupApi";
+import { roundHasScrambleEvent, roundRequiresTeams } from "../../utils/roundEventCapabilities";
 import type { RoundSetupStatusResponse } from "../../types/round";
 
 type RoundFlowStep = "setup" | "groups" | "teams" | "scoring" | "results";
@@ -21,10 +22,6 @@ type StepItem = {
 
 function safeLength<T>(value: T[] | undefined | null): number {
   return Array.isArray(value) ? value.length : 0;
-}
-
-function isTwoManFormat(format?: string | null): boolean {
-  return format === "TWO_MAN_LOW_NET";
 }
 
 export default function RoundProgressBar({
@@ -60,7 +57,8 @@ export default function RoundProgressBar({
   }, [roundId]);
 
   const effectiveFormat = format ?? data?.round?.format ?? null;
-  const twoMan = isTwoManFormat(effectiveFormat);
+  const usesTeamAssignment = roundRequiresTeams(data?.readiness, effectiveFormat);
+  const hasScrambleEvent = roundHasScrambleEvent(data?.readiness, effectiveFormat);
 
   const totalPlayers = safeLength(data?.round?.players);
   const groupedPlayers =
@@ -71,12 +69,12 @@ export default function RoundProgressBar({
   const teamUnassignedCount = safeLength(data?.teamAssignment?.unassignedPlayers);
 
   const groupsReady = totalPlayers > 0 && groupedPlayers === totalPlayers;
-  const teamsReady = twoMan ? totalPlayers > 0 && teamUnassignedCount === 0 : groupsReady;
-  const scoringReady = finalized || (twoMan ? teamsReady && groupsReady : groupsReady);
+  const teamsReady = usesTeamAssignment ? totalPlayers > 0 && teamUnassignedCount === 0 : groupsReady;
+  const scoringReady = finalized || (usesTeamAssignment ? teamsReady && groupsReady : groupsReady);
   const resultsReady = finalized;
 
   const steps = useMemo<StepItem[]>(() => {
-    if (twoMan) {
+    if (usesTeamAssignment) {
       return [
         {
           key: "setup",
@@ -86,8 +84,14 @@ export default function RoundProgressBar({
         },
         {
           key: "teams",
-          label: "Teams",
+          label: hasScrambleEvent ? "Scramble Teams" : "Teams",
           path: `/rounds/${roundId}/teams`,
+          unlocked: true,
+        },
+        {
+          key: "groups",
+          label: hasScrambleEvent ? "Tee Times" : "Groups / Tee Times",
+          path: `/rounds/${roundId}/groups`,
           unlocked: true,
         },
         {
@@ -131,7 +135,7 @@ export default function RoundProgressBar({
         unlocked: resultsReady,
       },
     ];
-  }, [roundId, twoMan, scoringReady, resultsReady]);
+  }, [roundId, usesTeamAssignment, hasScrambleEvent, scoringReady, resultsReady]);
 
   const currentIndex = steps.findIndex((step) => step.key === currentStep);
 

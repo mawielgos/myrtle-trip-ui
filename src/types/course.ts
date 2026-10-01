@@ -8,12 +8,19 @@ export interface CourseTeeListItem {
   courseTeeId: number;
   courseId: number;
   teeName: string;
+  effectiveDate?: string | null;
+  retiredDate?: string | null;
   alternateTeeName?: string | null;
   courseRating?: number | null;
   slope?: number | null;
   alternateCourseRating?: number | null;
   alternateSlope?: number | null;
   parTotal?: number | null;
+  yardageTotal?: number | null;
+  womenCourseRating?: number | null;
+  womenSlope?: number | null;
+  womenParTotal?: number | null;
+  holeCount?: number | null;
 }
 
 export interface CourseSummary {
@@ -58,16 +65,22 @@ export interface CourseTee {
   teeId: number;
   courseId: number;
   teeName: string;
+  effectiveDate: string | null;
+  retiredDate: string | null;
   courseRating: number;
   slope: number;
   parTotal: number;
+  yardageTotal: number | null;
   active: boolean;
 }
 
 export interface SaveCourseTeeRequest {
   teeName: string;
+  effectiveDate: string | null;
+  retiredDate: string | null;
   courseRating: number;
   slope: number;
   parTotal: number;
+  yardageTotal: number | null;
   active: boolean;
 }

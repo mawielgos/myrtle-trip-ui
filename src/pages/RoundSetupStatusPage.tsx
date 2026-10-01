@@ -8,34 +8,26 @@ import {
   pageContainerMediumStyle,
   primaryButtonStyle,
   sectionStyle,
-  successBoxStyle,
   warningBoxStyle,
 } from "../styles/uiStyles";
 import RoundProgressBar from "../components/round/RoundProgressBar";
+import PageHeader from "../components/common/PageHeader";
+import { formatGameDescription } from "../utils/gameFormat";
+import TripDetailButton from "../components/common/TripDetailButton";
+import RoundReadinessPanel from "../components/round/RoundReadinessPanel";
+import { buildScoreEntryAction, getGroupsActionLabel, getTeamsActionLabel } from "../utils/roundNavigation";
+import {
+  roundHasScrambleEvent,
+  roundHasTwoManLowNetEvent,
+  roundRequiresTeams,
+} from "../utils/roundEventCapabilities";
 
 function safeArray<T>(value: T[] | undefined | null): T[] {
   return Array.isArray(value) ? value : [];
 }
 
-function isTwoManFormat(format: string | undefined | null): boolean {
-  return format === "TWO_MAN_LOW_NET";
-}
-
 function formatLabel(format: string | undefined | null): string {
-  switch (format) {
-    case "MIDDLE_MAN":
-      return "4-Man Middle Man";
-    case "ONE_TWO_THREE":
-      return "4-Man 1-2-3";
-    case "TWO_MAN_LOW_NET":
-      return "2-Man Low Net";
-    case "THREE_LOW_NET":
-      return "4-Man 3 Low Net";
-    case "TEAM_SCRAMBLE":
-      return "4-Man Scramble";
-    default:
-      return format ?? "";
-  }
+  return formatGameDescription(format);
 }
 
 function formatRoundDate(value: string | undefined | null): string {
@@ -63,12 +55,6 @@ const summaryLabelStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const listStyle: React.CSSProperties = {
-  marginTop: "8px",
-  marginBottom: 0,
-  paddingLeft: "20px",
-};
-
 const buttonRowStyle: React.CSSProperties = {
   display: "flex",
   gap: "8px",
@@ -80,13 +66,8 @@ const disabledButtonStyle: React.CSSProperties = {
   ...buttonStyle,
   color: "#888",
   background: "#eee",
-  border: "1px solid #ccc",
+  border: "1px solid #c7ccd1",
   cursor: "not-allowed",
-};
-
-const dangerBoxStyle: React.CSSProperties = {
-  ...errorBoxStyle,
-  marginTop: "12px",
 };
 
 const localWarningBoxStyle: React.CSSProperties = {
@@ -135,11 +116,10 @@ export default function RoundSetupStatusPage() {
   const groupList = safeArray(groups?.groups);
   const teamList = safeArray(teamAssignment?.teams);
   const teamUnassignedPlayers = safeArray(teamAssignment?.unassignedPlayers);
-  const blockingIssues = safeArray(readiness?.blockingIssues);
-  const warnings = safeArray(readiness?.warnings);
-
   const totalPlayers = roundPlayers.length;
-  const twoMan = isTwoManFormat(round?.format);
+  const usesTeamAssignment = roundRequiresTeams(readiness, round?.format);
+  const scramble = roundHasScrambleEvent(readiness, round?.format);
+  const twoManLowNet = roundHasTwoManLowNetEvent(readiness, round?.format);
 
   const totalGroupedPlayers = useMemo(() => {
     return groupList.reduce((sum, group) => sum + safeArray(group.players).length, 0);
@@ -151,13 +131,14 @@ export default function RoundSetupStatusPage() {
 
   const groupUnassignedCount = Math.max(totalPlayers - totalGroupedPlayers, 0);
   const groupsReady = totalPlayers > 0 && groupUnassignedCount === 0;
-  const teamsReady = twoMan
+  const teamsReady = usesTeamAssignment
     ? totalPlayers > 0 && teamUnassignedPlayers.length === 0
     : groupsReady;
 
-  const scoringReady = twoMan
-    ? Boolean(readiness?.ready) && !round?.finalized
-    : groupsReady && !round?.finalized;
+  const scoringReady = Boolean(readiness?.ready ?? readiness?.readyForScoring) && !round?.finalized;
+  const scoreEntryAction = round ? buildScoreEntryAction(round.roundId, round) : null;
+  const groupsActionLabel = getGroupsActionLabel(round);
+  const teamsActionLabel = getTeamsActionLabel(round);
 
   if (loading) {
     return <div style={{ padding: "16px" }}>Loading round setup...</div>;
@@ -181,31 +162,22 @@ export default function RoundSetupStatusPage() {
 
   return (
     <div style={pageContainerMediumStyle}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
-          marginBottom: "16px",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Round Setup</h1>
-        <div>
-          <strong>Round ID:</strong> {round.roundId}
-        </div>
-      </div>
-
-      <div style={{ marginBottom: "16px" }}>
-        <button
-          style={buttonStyle}
-          type="button"
-          onClick={() => navigate(`/rounds/${round.roundId}/open`)}
-        >
-          Continue
-        </button>
-      </div>
+      <PageHeader
+        title="Round Workflow"
+        subtitle={`${round.courseName ?? "Course not selected"} • ${formatRoundDate(round.roundDate)} • ${formatLabel(round.format)}`}
+        actions={
+          <>
+            {round.tripId ? <TripDetailButton tripId={round.tripId} /> : null}
+            <button
+              style={primaryButtonStyle}
+              type="button"
+              onClick={() => navigate(`/rounds/${round.roundId}/open`)}
+            >
+              Continue
+            </button>
+          </>
+        }
+      />
 
       <RoundProgressBar
         roundId={round.roundId}
@@ -224,7 +196,6 @@ export default function RoundSetupStatusPage() {
           <div style={summaryLabelStyle}>Tee</div>
           <div>
             {round.teeName}
-            {round.alternateTeeName ? ` / ${round.alternateTeeName}` : ""}
           </div>
 
           <div style={summaryLabelStyle}>Format</div>
@@ -241,21 +212,16 @@ export default function RoundSetupStatusPage() {
         </div>
       </section>
 
+      <RoundReadinessPanel readiness={readiness} />
+
       <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0 }}>Readiness</h2>
+        <h2 style={{ marginTop: 0 }}>Format Notes</h2>
 
-        <div>
-          <strong>Status:</strong> {readiness.ready ? "Ready" : "Not Ready"}
-        </div>
-
-        {readiness.ready ? (
-          <div style={successBoxStyle}>This round is ready to move into scoring.</div>
-        ) : null}
-
-        {twoMan ? (
+        {usesTeamAssignment ? (
           <div style={localWarningBoxStyle}>
-            For 2-Man Low Net, teams are entered first. Tee-sheet groups are built
-            automatically from team order: Team 1 + Team 2 = Group 1, Team 3 + Team 4 = Group 2, and so on.
+            {scramble
+              ? "For Scramble, teams are entered first. Each scramble team is also used as its tee-sheet group."
+              : "For 2-Man Low Net, teams are entered first. Tee-sheet groups are built automatically from team order: Team 1 + Team 2 = Group 1, Team 3 + Team 4 = Group 2, and so on."}
           </div>
         ) : (
           <div style={localWarningBoxStyle}>
@@ -263,28 +229,6 @@ export default function RoundSetupStatusPage() {
             Separate team assignment is not required.
           </div>
         )}
-
-        {blockingIssues.length > 0 ? (
-          <div style={dangerBoxStyle}>
-            <strong>Blocking Issues</strong>
-            <ul style={listStyle}>
-              {blockingIssues.map((issue, index) => (
-                <li key={index}>{issue}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {warnings.length > 0 ? (
-          <div style={localWarningBoxStyle}>
-            <strong>Warnings</strong>
-            <ul style={listStyle}>
-              {warnings.map((warning, index) => (
-                <li key={index}>{warning}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </section>
 
       <section style={sectionStyle}>
@@ -303,7 +247,7 @@ export default function RoundSetupStatusPage() {
           <div style={summaryLabelStyle}>Groups Complete</div>
           <div>{groupsReady ? "Yes" : "No"}</div>
 
-          {twoMan ? (
+          {usesTeamAssignment ? (
             <>
               <div style={summaryLabelStyle}>Players Assigned to Teams</div>
               <div>{totalTeamedPlayers}</div>
@@ -323,14 +267,14 @@ export default function RoundSetupStatusPage() {
         </div>
 
         <div style={buttonRowStyle}>
-          {twoMan ? (
+          {usesTeamAssignment ? (
             <>
               <button
                 type="button"
                 style={buttonStyle}
                 onClick={() => navigate(`/rounds/${round.roundId}/teams`)}
               >
-                Edit Teams
+                {scramble && teamsReady && !round.finalized && !round.tripLocked ? "Edit Scramble Teams" : teamsActionLabel}
               </button>
 
               <button
@@ -338,7 +282,11 @@ export default function RoundSetupStatusPage() {
                 style={buttonStyle}
                 onClick={() => navigate(`/rounds/${round.roundId}/groups`)}
               >
-                View Derived Groups
+                {round?.finalized || round?.tripLocked
+                  ? "View Derived Groups"
+                  : twoManLowNet || scramble
+                    ? "Set Tee Times / Derived Groups"
+                    : "Derived Groups"}
               </button>
             </>
           ) : (
@@ -347,22 +295,30 @@ export default function RoundSetupStatusPage() {
               style={buttonStyle}
               onClick={() => navigate(`/rounds/${round.roundId}/groups`)}
             >
-              Edit Groups
+              {groupsActionLabel}
             </button>
           )}
 
           <button
             type="button"
+            style={buttonStyle}
+            onClick={() => navigate(`/rounds/${round.roundId}/tee-sheet`)}
+          >
+            Tee Sheet
+          </button>
+
+          <button
+            type="button"
             style={scoringReady ? primaryButtonStyle : disabledButtonStyle}
             onClick={() => {
-              if (!scoringReady) {
+              if (!scoringReady && !round.finalized) {
                 return;
               }
-              navigate(`/rounds/${round.roundId}/scoring`);
+              navigate(scoreEntryAction?.path ?? `/rounds/${round.roundId}/scoring`);
             }}
-            disabled={!scoringReady}
+            disabled={!scoringReady && !round.finalized}
           >
-            Go to Scoring
+            {scoreEntryAction?.label ?? "Scoring"}
           </button>
         </div>
       </section>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getCourseSummaries } from "../api/courseApi";
+import { getAdminCourses } from "../api/courseAdminApi";
 import {
   buttonStyle,
   errorBoxStyle,
@@ -9,7 +9,8 @@ import {
   tdStyle,
   thStyle,
 } from "../styles/uiStyles";
-import type { CourseSummary } from "../types/course";
+import type { CourseSummary } from "../types/courseAdmin";
+import PageHeader from "../components/common/PageHeader";
 
 export default function CoursesPage() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export default function CoursesPage() {
       setLoading(true);
       setError("");
 
-      const data = await getCourseSummaries();
+      const data = await getAdminCourses();
       setCourses(data);
     } catch (err) {
       console.error("Failed to load courses", err);
@@ -37,35 +38,29 @@ export default function CoursesPage() {
   }
 
   function handleCreateCourse(): void {
-    navigate("/courses/new");
+    navigate("/admin/courses/new");
   }
 
   function handleOpenCourse(courseId: number): void {
-    navigate(`/courses/${courseId}`);
+    navigate(`/admin/courses/${courseId}`);
   }
 
   return (
     <div style={pageContainerMediumStyle}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
-          marginBottom: "16px",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Course Master</h1>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button style={buttonStyle} onClick={() => navigate("/trips")}>
-            Back to Trips
-          </button>
-          <button style={buttonStyle} onClick={handleCreateCourse}>
-            Create Course
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Course Master"
+        subtitle={`${courses.length} course${courses.length === 1 ? "" : "s"}`}
+        actions={
+          <>
+            <button style={buttonStyle} onClick={() => navigate("/trips")}>
+              Events
+            </button>
+            <button style={buttonStyle} onClick={handleCreateCourse}>
+              Create Course
+            </button>
+          </>
+        }
+      />
 
       {loading && <div>Loading courses...</div>}
 
@@ -80,7 +75,7 @@ export default function CoursesPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>Legacy #</th>
+                <th style={thStyle}>Course #</th>
                 <th style={thStyle}>Course</th>
                 <th style={thStyle}>Location</th>
                 <th style={thStyle}>Tees</th>
