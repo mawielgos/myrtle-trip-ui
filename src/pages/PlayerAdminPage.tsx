@@ -143,6 +143,66 @@ function hasFormChanges(form: SavePlayerRequest, initialForm: SavePlayerRequest,
   return JSON.stringify(buildComparableForm(form)) !== JSON.stringify(buildComparableForm(initialForm));
 }
 
+
+function countActivePlayers(players: PlayerListItem[]): number {
+  let total = 0;
+  for (const player of players) {
+    if (player.active) {
+      total += 1;
+    }
+  }
+  return total;
+}
+
+function filterVisiblePlayers(
+  players: PlayerListItem[],
+  onlyActivePlayers: boolean,
+  searchText: string,
+): PlayerListItem[] {
+  const normalizedSearch = searchText.trim().toLowerCase();
+
+  return players.filter((player) => {
+    if (onlyActivePlayers && !player.active) {
+      return false;
+    }
+
+    if (normalizedSearch.length === 0) {
+      return true;
+    }
+
+    const searchableText = [
+      player.displayName,
+      player.firstName,
+      player.lastName,
+      player.email,
+      player.ghinNumber,
+      player.cell,
+      player.handicapMethod,
+      player.gender,
+      formatGender(player.gender),
+      String(player.playerId),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return searchableText.includes(normalizedSearch);
+  });
+}
+
+export const playerAdminTestApi = {
+  emptyForm,
+  formatValue,
+  buildDisplayName,
+  normalizeGender,
+  formatGender,
+  buildSubLabel,
+  buildFormFromPlayer,
+  buildComparableForm,
+  hasFormChanges,
+  countActivePlayers,
+  filterVisiblePlayers,
+};
+
 function PlayerEditDialog({
   editor,
   onClose,
@@ -671,46 +731,12 @@ export default function PlayerAdminPage() {
     await loadPlayers({ preserveStatus: true, preserveScroll: true });
   }
 
-  const activeCount = useMemo(() => {
-    let total = 0;
-    for (const player of players) {
-      if (player.active) {
-        total += 1;
-      }
-    }
-    return total;
-  }, [players]);
+  const activeCount = useMemo(() => countActivePlayers(players), [players]);
 
-  const visiblePlayers = useMemo(() => {
-    const normalizedSearch = searchText.trim().toLowerCase();
-
-    return players.filter((player) => {
-      if (onlyActivePlayers && !player.active) {
-        return false;
-      }
-
-      if (normalizedSearch.length === 0) {
-        return true;
-      }
-
-      const searchableText = [
-        player.displayName,
-        player.firstName,
-        player.lastName,
-        player.email,
-        player.ghinNumber,
-        player.cell,
-        player.handicapMethod,
-        player.gender,
-        formatGender(player.gender),
-        String(player.playerId),
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return searchableText.includes(normalizedSearch);
-    });
-  }, [players, onlyActivePlayers, searchText]);
+  const visiblePlayers = useMemo(
+    () => filterVisiblePlayers(players, onlyActivePlayers, searchText),
+    [players, onlyActivePlayers, searchText],
+  );
 
   return (
     <div style={pageContainerWideStyle}>
