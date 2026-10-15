@@ -1,19 +1,14 @@
 import { useNavigate, useParams } from "react-router-dom";
 import type { RoundTeam } from "../types/round";
 import {
-  buttonStyle,
-  errorBoxStyle,
   pageContainerMediumStyle,
   primaryButtonStyle,
-  successBoxStyle,
-  warningBoxStyle,
 } from "../styles/uiStyles";
 import RoundProgressBar from "../components/round/RoundProgressBar";
-import PageHeader from "../components/common/PageHeader";
-import TripDetailButton from "../components/common/TripDetailButton";
-import WorkflowBackButton from "../components/common/WorkflowBackButton";
 import RoundReadinessPanel from "../components/round/RoundReadinessPanel";
 import RoundTeamAssignmentTables from "../components/round/RoundTeamAssignmentTables";
+import RoundTeamAssignmentNotices from "./RoundTeamAssignmentNotices";
+import RoundTeamAssignmentHeader from "./RoundTeamAssignmentHeader";
 import RoundTeamAssignmentExceptionControl from "../components/round/RoundTeamAssignmentExceptionControl";
 import RoundTeamAssignmentScrambleSetup from "../components/round/RoundTeamAssignmentScrambleSetup";
 import { useUnsavedChangesWarning } from "../hooks/useUnsavedChangesWarning";
@@ -28,17 +23,6 @@ import {
   playerCanUseTee,
   getRoundFormatLabel,
 } from "./roundTeamAssignmentLogic";
-
-const disabledSmallButtonStyle: React.CSSProperties = {
-  ...buttonStyle,
-  height: "30px",
-  padding: "0 10px",
-  fontSize: "13px",
-  color: "#888",
-  background: "#eee",
-  border: "1px solid #c7ccd1",
-  cursor: "not-allowed",
-};
 
 function formatEventRoundLabel(
   roundNumber?: number | null,
@@ -280,126 +264,38 @@ export default function RoundTeamAssignmentPage() {
 
   return (
     <div style={pageContainerMediumStyle}>
-      <PageHeader
-        title="Round Team Assignment"
-        subtitle={
-          <>
-            <div>
-              {eventRoundLabel}
-              {status?.format
-                ? ` • ${getRoundFormatLabel(status.format, scrambleTeamSize)}`
-                : ""}
-              {status?.courseName ? ` • ${status.courseName}` : ""}
-              {status?.roundDate ? ` • ${status.roundDate}` : ""}
-            </div>
-            <div style={{ marginTop: "6px" }}>
-              Assigned: {assignedCount} • Unassigned: {unassignedPlayers.length}{" "}
-              • Total Active: {totalPlayers} • Unavailable: {inactiveCount} •
-              Teams: {teams.length}/{expectedTeamCount} • Max/team:{" "}
-              {expectedTeamSize}
-            </div>
-            {hasScrambleEvent && seedingLabel ? (
-              <div style={{ marginTop: "6px", color: "#555" }}>
-                {seedingLabel}
-              </div>
-            ) : null}
-            <div
-              style={{
-                marginTop: "6px",
-                color: dirty || scrambleConfigDirty ? "#9a3412" : "#555",
-                fontWeight: dirty || scrambleConfigDirty ? 600 : 400,
-              }}
-            >
-              {dirty || scrambleConfigDirty
-                ? "Unsaved changes"
-                : "All changes saved"}
-            </div>
-          </>
-        }
-        actions={
-          <>
-            {status?.tripId ? (
-              <TripDetailButton
-                tripId={status.tripId}
-                onBeforeNavigate={confirmIfNeeded}
-              />
-            ) : null}
-            <WorkflowBackButton
-              label="Back to Round Setup"
-              to={`/rounds/${roundId}`}
-              onBeforeNavigate={confirmIfNeeded}
-            />
-            {canSuggestTeamAssignments ? (
-              <button
-                type="button"
-                style={buttonStyle}
-                onClick={() => suggestScrambleTeams(capabilities?.assignTeamsReason)}
-                disabled={saving || (hasScrambleEvent && scrambleConfigDirty)}
-              >
-                Suggest Teams
-              </button>
-            ) : null}
-            {usesDerivedTeeSheetGroups ? (
-              <button
-                type="button"
-                style={dirty ? primaryButtonStyle : buttonStyle}
-                onClick={() => void handleOpenDerivedGroups()}
-                disabled={saving}
-                title={
-                  scrambleConfigDirty
-                    ? "Save Scramble Setup before setting tee times."
-                    : undefined
-                }
-              >
-                {derivedGroupsButtonLabel}
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              style={buttonStyle}
-              onClick={() =>
-                void navigateIfClean(`/rounds/${roundId}/tee-sheet`)
-              }
-            >
-              Tee Sheet
-            </button>
-            <button
-              type="button"
-              style={isReadyForScoring ? buttonStyle : disabledSmallButtonStyle}
-              disabled={!isReadyForScoring}
-              title={scoringBlockedReason ?? undefined}
-              onClick={() => {
-                if (!isReadyForScoring) {
-                  setError(
-                    scoringBlockedReason ?? "Round is not ready for scoring.",
-                  );
-                  return;
-                }
-                navigateIfClean(`/rounds/${roundId}/scoring`);
-              }}
-            >
-              Continue to Scoring
-            </button>
-            <button
-              type="button"
-              style={buttonStyle}
-              onClick={() => void navigateIfClean(`/rounds/${roundId}/results`)}
-            >
-              Results
-            </button>
-            {!tripIsLocked ? (
-              <button
-                type="button"
-                style={primaryButtonStyle}
-                onClick={() => void handleSave()}
-                disabled={saving || !dirty}
-              >
-                {saveButtonLabel}
-              </button>
-            ) : null}
-          </>
-        }
+      <RoundTeamAssignmentHeader
+        roundId={roundId}
+        eventRoundLabel={eventRoundLabel}
+        formatLabel={status?.format ? getRoundFormatLabel(status.format, scrambleTeamSize) : null}
+        courseName={status?.courseName}
+        roundDate={status?.roundDate}
+        tripId={status?.tripId}
+        assignedCount={assignedCount}
+        unassignedCount={unassignedPlayers.length}
+        totalPlayers={totalPlayers}
+        inactiveCount={inactiveCount}
+        teamCount={teams.length}
+        expectedTeamCount={expectedTeamCount}
+        expectedTeamSize={expectedTeamSize}
+        hasScrambleEvent={hasScrambleEvent}
+        seedingLabel={seedingLabel}
+        dirty={dirty}
+        scrambleConfigDirty={scrambleConfigDirty}
+        canSuggestTeamAssignments={canSuggestTeamAssignments}
+        saving={saving}
+        usesDerivedTeeSheetGroups={usesDerivedTeeSheetGroups}
+        derivedGroupsButtonLabel={derivedGroupsButtonLabel}
+        isReadyForScoring={isReadyForScoring}
+        scoringBlockedReason={scoringBlockedReason}
+        tripIsLocked={tripIsLocked}
+        saveButtonLabel={saveButtonLabel}
+        onBeforeNavigate={confirmIfNeeded}
+        onSuggestTeams={() => suggestScrambleTeams(capabilities?.assignTeamsReason)}
+        onOpenDerivedGroups={handleOpenDerivedGroups}
+        onNavigate={navigateIfClean}
+        onScoringBlocked={setError}
+        onSave={handleSave}
       />
 
       {readiness ? <RoundReadinessPanel readiness={readiness} compact /> : null}
@@ -412,86 +308,23 @@ export default function RoundTeamAssignmentPage() {
         />
       ) : null}
 
-      {usesDerivedTeeSheetGroups ? (
-        <div style={warningBoxStyle}>
-          {hasScrambleEvent
-            ? "Scramble teams define the competition teams. Tee times and starting holes are managed from derived tee-sheet groups."
-            : "2-Man teams define the competition teams. Tee times and starting holes are managed from derived tee-sheet groups."}{" "}
-          Use <strong>{derivedGroupsButtonLabel}</strong> after suggesting or
-          editing teams to generate or adjust tee times before scoring.
-        </div>
-      ) : null}
-
-      {shortFourManTeamsNeedingException.length > 0 ? (
-        <div style={warningBoxStyle}>
-          One or more 4-man teams have only 3 players. Configure a valid
-          short-team exception below: ghost player for 4-Man 2-Low Net, or
-          extra-shot rotation for Scramble.
-        </div>
-      ) : shortFourManTeams.length > 0 ? (
-        <div style={warningBoxStyle}>
-          Short 4-man team exception configured. Readiness will allow the short
-          team once groups / tee times are complete.
-        </div>
-      ) : null}
-
-      {tripIsLocked ? (
-        <div style={warningBoxStyle}>
-          This event is complete and locked. Team assignments and tee selections
-          are view-only.
-        </div>
-      ) : isFinalizedRound ? (
-        <div style={warningBoxStyle}>
-          This round is finalized. Team membership and player order are locked,
-          but tee corrections are allowed and will trigger recalculation.
-        </div>
-      ) : null}
-
-      {dirty || scrambleConfigDirty ? (
-        <div style={warningBoxStyle}>
-          {isFinalizedRound
-            ? "You have unsaved tee corrections. Save before leaving this page or going to scoring."
-            : scrambleConfigDirty && dirty
-              ? "You have unsaved Scramble setup and team assignment changes. Save both before leaving this page or going to scoring."
-              : scrambleConfigDirty
-                ? "You have unsaved Scramble setup changes. Save Scramble Setup before leaving this page or going to scoring."
-                : "You have unsaved team assignment changes. Save before leaving this page or going to scoring."}
-        </div>
-      ) : null}
-
-      {confirmSuggestTeams ? (
-        <div style={warningBoxStyle}>
-          <div style={{ fontWeight: 700, marginBottom: "4px" }}>
-            Replace current team assignments?
-          </div>
-          <div>
-            Suggest Teams will rebuild the teams from the current active player
-            list. Existing team assignments, short-team exception setup, and
-            tee-sheet groups may need to be reviewed again after you save.
-          </div>
-          <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={applySuggestedScrambleTeams}
-              disabled={saving}
-            >
-              Continue Suggest Teams
-            </button>
-            <button
-              type="button"
-              style={buttonStyle}
-              onClick={() => setConfirmSuggestTeams(false)}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {message ? <div style={successBoxStyle}>{message}</div> : null}
-      {error ? <div style={errorBoxStyle}>{error}</div> : null}
+      <RoundTeamAssignmentNotices
+        usesDerivedTeeSheetGroups={usesDerivedTeeSheetGroups}
+        hasScrambleEvent={hasScrambleEvent}
+        derivedGroupsButtonLabel={derivedGroupsButtonLabel}
+        shortFourManTeamsNeedingExceptionCount={shortFourManTeamsNeedingException.length}
+        shortFourManTeamsCount={shortFourManTeams.length}
+        tripIsLocked={tripIsLocked}
+        isFinalizedRound={isFinalizedRound}
+        dirty={dirty}
+        scrambleConfigDirty={scrambleConfigDirty}
+        confirmSuggestTeams={confirmSuggestTeams}
+        applySuggestedScrambleTeams={applySuggestedScrambleTeams}
+        cancelSuggestTeams={() => setConfirmSuggestTeams(false)}
+        saving={saving}
+        message={message}
+        error={error}
+      />
 
       {hasScrambleEvent ? (
         <RoundTeamAssignmentScrambleSetup
