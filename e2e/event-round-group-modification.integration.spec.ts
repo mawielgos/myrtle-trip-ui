@@ -1,0 +1,226 @@
+import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+
+// Integration test uses the real API and PostgreSQL. Refuse to write unless
+// STS is running against the dedicated E2E database.
+test.beforeEach(async ({ request }) => {
+  const response = await request.get("/api/e2e/identity");
+  expect(response.ok(), "Start the backend using the e2e profile on port 8081").toBeTruthy();
+  expect(await response.json()).toEqual({ profile: "e2e", database: "myrtle_trip_e2e_test" });
+});
+
+test("remove and restore a round group assignment with persistence checks", async ({ page, request }) => {
+  const token = randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase();
+  const eventName = `Playwright Groups ${token}`;
+  const courseName = `Playwright Course ${token}`;
+  const lastName = `Round${token}`;
+  const playerName = `Playwright ${lastName}`;
+
+  await page.goto("/admin/players/new");
+  await expect(page.getByRole("heading", { name: "Add Player" })).toBeVisible();
+  await page.getByText("First Name", { exact: true }).locator("..").locator("input").fill("Playwright");
+  await page.getByText("Last Name", { exact: true }).locator("..").locator("input").fill(lastName);
+  await page.getByRole("button", { name: "Save Player" }).click();
+  await expect(page).toHaveURL(/\/admin\/players\/\d+$/);
+  const playerId = Number(new URL(page.url()).pathname.split("/").at(-1));
+
+  // Ensure this test is independent of course master data in a fresh database.
+  // Fixture creation uses actual admin API endpoints, not mocks or direct SQL.
+  const courseResponse = await request.post("/api/admin/courses", {
+    data: {
+      legacyCourseNumber: null, courseName, location: "E2E Test",
+      addressLine1: "", addressLine2: "", city: "", state: "",
+      postalCode: "", phoneNumber: "", websiteUrl: "", active: true,
+    },
+  });
+  expect(courseResponse.ok(), await courseResponse.text()).toBeTruthy();
+  const courseId = (await courseResponse.json()).courseId as number;
+  expect(courseId).toBeGreaterThan(0);
+
+  const teeResponse = await request.post(`/api/admin/courses/${courseId}/tees`, {
+    data: {
+      teeName: "E2E White", effectiveDate: null, retiredDate: null,
+      courseRating: 70.5, slope: 125, parTotal: 72, yardageTotal: 6200, active: true,
+    },
+  });
+  expect(teeResponse.ok(), await teeResponse.text()).toBeTruthy();
+  const teeId = (await teeResponse.json()).teeId as number;
+  expect(teeId).toBeGreaterThan(0);
+
+  // The planning UI only offers men's tees with a complete 18-hole setup.
+  // A newly created tee has zero holes and is intentionally excluded.
+  const holesResponse = await request.put(`/api/admin/courses/tees/${teeId}/holes`, {
+    data: Array.from({ length: 18 }, (_, index) => ({
+      holeNumber: index + 1,
+      par: 4,
+      handicap: index + 1,
+      yardage: index < 10 ? 345 : 344,
+      womenPar: null,
+      womenHandicap: null,
+    })),
+  });
+  expect(holesResponse.ok(), await holesResponse.text()).toBeTruthy();
+  expect((await holesResponse.json()).length).toBe(18);
+
+  const eligibleTeesResponse = await request.get(`/api/courses/${courseId}/tees`);
+  expect(eligibleTeesResponse.ok()).toBeTruthy();
+  const eligibleTees = await eligibleTeesResponse.json() as Array<{
+    courseTeeId: number; holeCount: number;
+  }>;
+  expect(eligibleTees.find((tee) => tee.courseTeeId === teeId)?.holeCount).toBe(18);
+
+  await page.goto("/trips/new");
+  await expect(page.getByRole("heading", { name: "Create Event" })).toBeVisible();
+  await page.getByLabel("Event Name").fill(eventName);
+  await page.getByLabel("Event Code").fill(`ASSIGN_${token}`);
+  await page.getByLabel("Event Start Date").fill("2027-09-01");
+  await page.getByLabel("Event End Date").fill("2027-09-05");
+  await page.getByLabel("Number of Rounds").fill("1");
+  await page.getByRole("checkbox", { name: /Scratch \/ no handicaps/ }).check();
+  await page.getByLabel("Search Players").fill(lastName);
+  const playerRow = page.getByRole("row").filter({ hasText: lastName });
+  await expect(playerRow).toHaveCount(1);
+  await playerRow.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Save Event", exact: true }).click();
+  await expect(page).toHaveURL(/\/trips\/\d+$/);
+  const tripId = Number(new URL(page.url()).pathname.split("/").at(-1));
+
+  await page.goto(`/trips/${tripId}/planned-rounds`);
+  await expect(page.getByRole("heading", { name: "Planned Rounds" })).toBeVisible();
+  // A newly created event normally provides one blank planned round.
+  // Account for a configuration where no blank round is provisioned yet.
+  if ((await page.getByLabel("Date", { exact: true }).count()) === 0) {
+    await page.getByRole("button", { name: "Add Round" }).first().click();
+  }
+  await page.getByLabel("Date", { exact: true }).first().fill("2027-09-02");
+  // The Date field is inside the expanded round editor, so it is already open.
+  // Do not click Round 1 here: that toggles the accordion CLOSED.
+  // Identify the course select by its placeholder option to avoid an ambiguous
+  // accessible label (the accordion summary also contains "Course").
+  const courseSelect = page.locator('select:has(option:text-is("Select course"))').first();
+  await expect(courseSelect).toBeVisible();
+  await expect(courseSelect.locator(`option[value="${courseId}"]`)).toHaveCount(1);
+  await courseSelect.selectOption(String(courseId));
+  const teeSelect = page.getByLabel("Men's Default Tee").first();
+  await expect(teeSelect.locator(`option[value="${teeId}"]`)).toHaveCount(1);
+  await teeSelect.selectOption(String(teeId));
+  const gameSelect = page.locator('select:has(option:text-is("Select game"))').first();
+  await expect(gameSelect).toBeVisible();
+  await expect(gameSelect.locator('option[value="STROKE_PLAY"]')).toHaveCount(1);
+  await gameSelect.selectOption("STROKE_PLAY");
+  await page.getByRole("button", { name: "Save Planned Rounds" }).first().click();
+  await expect(page.getByText(/Planned rounds saved/)).toBeVisible();
+
+  const readRounds = async () => {
+    const response = await request.get(`/api/trips/${tripId}/planned-rounds`);
+    expect(response.ok()).toBeTruthy();
+    return (await response.json()) as Array<{
+      roundDate: string; courseId: number; defaultTeeId: number; format: string;
+    }>;
+  };
+  await expect.poll(async () => (await readRounds()).length).toBe(1);
+  expect((await readRounds())[0]).toMatchObject({
+    roundDate: "2027-09-02", courseId, defaultTeeId: teeId, format: "STROKE_PLAY",
+  });
+
+  // A complete planned round plus one active event player should make this
+  // scratch event eligible to start. Start through the UI, not via the API.
+  await page.goto(`/trips/${tripId}`);
+  const startButton = page.getByRole("button", { name: "Start Event", exact: true });
+  await expect(startButton).toBeVisible();
+  await startButton.click();
+  await expect(page.getByText("Event started successfully.")).toBeVisible();
+
+  const getRounds = async () => {
+    const response = await request.get(`/api/trips/${tripId}/rounds`);
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return await response.json() as Array<{ roundId: number; roundNumber: number }>;
+  };
+  await expect.poll(async () => (await getRounds()).length).toBe(1);
+  const [round] = await getRounds();
+  expect(round.roundId).toBeGreaterThan(0);
+
+  // Round setup status is the same read model powering the Round Groups UI.
+  const getRoundPlayers = async () => {
+    const response = await request.get(`/api/rounds/${round.roundId}/setup-status`);
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const status = await response.json() as { round: { players: Array<{ playerId: number; playerName: string }> } };
+    return status.round.players;
+  };
+  await expect.poll(async () => (await getRoundPlayers()).some(p => p.playerId === playerId)).toBe(true);
+
+  await page.goto(`/rounds/${round.roundId}/groups`);
+  await expect(page.getByRole("heading", { name: "Round Groups" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unassigned Players" })).toBeVisible();
+  await expect(page.getByText(playerName).first()).toBeVisible();
+  // Use the per-player assignment button in the Unassigned Players section.
+  // The button is only rendered after the backend returns the round groups.
+  const unassignedHeading = page.getByRole("heading", { name: "Unassigned Players" });
+  await expect(unassignedHeading).toBeVisible();
+  const unassignedSection = unassignedHeading.locator("xpath=ancestor::section[1]");
+  const playerRowInUnassigned = unassignedSection.getByRole("row").filter({ hasText: playerName });
+  await expect(playerRowInUnassigned).toHaveCount(1);
+  await playerRowInUnassigned.getByRole("button", { name: "Group 1", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save Groups", exact: true }).first()).toBeEnabled();
+  await page.getByRole("button", { name: "Save Groups", exact: true }).first().click();
+  // The success banner is not a reliable persistence assertion across UI refreshes.
+  // Confirm the actual round-group read model below instead.
+
+  // Check the persisted group read-model, rather than only React component state.
+  const readGroups = async () => {
+    const response = await request.get(`/api/rounds/${round.roundId}/groups`);
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return await response.json() as {
+      groups: Array<{ groupNumber: number; players: Array<{ playerId: number }> }>;
+    };
+  };
+  await expect.poll(async () =>
+    (await readGroups()).groups.some(group =>
+      group.groupNumber === 1 && group.players.some(player => player.playerId === playerId)
+    )
+  ).toBe(true);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Round Groups" })).toBeVisible();
+  await expect(unassignedSection.getByRole("row").filter({ hasText: playerName })).toHaveCount(0);
+  await expect(page.getByText(playerName).first()).toBeVisible();
+  expect((await readGroups()).groups.some(group =>
+    group.groupNumber === 1 && group.players.some(player => player.playerId === playerId)
+  )).toBe(true);
+
+  // Modification workflow: remove the player from the group using the Groups
+  // table, then save. A removed player should reappear in Unassigned Players.
+  // There is intentionally just one group for a one-player event, so the test
+  // exercises removal/reassignment rather than assuming Group 2 exists.
+  const groupsHeading = page.getByRole("heading", { name: "Groups", exact: true });
+  const groupsSection = groupsHeading.locator("xpath=ancestor::section[1]");
+  const assignedRow = groupsSection.getByRole("row").filter({ hasText: playerName });
+  await expect(assignedRow).toHaveCount(1);
+  await assignedRow.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(unassignedSection.getByRole("row").filter({ hasText: playerName })).toHaveCount(1);
+  await page.getByRole("button", { name: "Save Groups", exact: true }).first().click();
+  await expect.poll(async () =>
+    (await readGroups()).groups.some(group =>
+      group.players.some(player => player.playerId === playerId)
+    )
+  ).toBe(false);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Unassigned Players" })).toBeVisible();
+  const restoredUnassignedRow = unassignedSection.getByRole("row").filter({ hasText: playerName });
+  await expect(restoredUnassignedRow).toHaveCount(1);
+
+  // Reassign and save again; verify both backend and UI after another reload.
+  await restoredUnassignedRow.getByRole("button", { name: "Group 1", exact: true }).click();
+  await page.getByRole("button", { name: "Save Groups", exact: true }).first().click();
+  await expect.poll(async () =>
+    (await readGroups()).groups.some(group =>
+      group.groupNumber === 1 && group.players.some(player => player.playerId === playerId)
+    )
+  ).toBe(true);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Round Groups" })).toBeVisible();
+  await expect(unassignedSection.getByRole("row").filter({ hasText: playerName })).toHaveCount(0);
+  await expect(groupsSection.getByRole("row").filter({ hasText: playerName })).toHaveCount(1);
+});
