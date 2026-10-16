@@ -1,8 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/** Browser smoke tests run against Vite; API calls are mocked in the smoke spec. */
+// Fast browser smoke tests: mocked API; do not require a running backend.
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "**/*.integration.spec.ts",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
